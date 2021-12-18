@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"io/fs"
+	"io/ioutil"
 	"os"
 	"os/signal"
 	"strconv"
@@ -18,7 +20,7 @@ var (
 )
 
 func init() {
-	Token = "OTIxMzA0MDQxNDM3NDA1MTk2.Ybw9QA.slAuyaNxT8bXl4lbTDg6_wZ-Isc"
+	Token = os.Getenv("TOKEN")
 }
 
 func main() {
@@ -42,7 +44,14 @@ func main() {
 		fmt.Println("error opening connection,", err)
 		return
 	}
-
+	status, err := ioutil.ReadFile("status.text")
+	if err != nil {
+		println("Could not read status.text file, " + err.Error())
+	}
+	err = dg.UpdateGameStatus(0, string(status))
+	if err != nil {
+		return
+	}
 	// Wait here until CTRL-C or other term signal is received.
 	fmt.Println("Bot is now running.  Press CTRL-C to exit.")
 	sc := make(chan os.Signal, 1)
@@ -75,7 +84,37 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			println(err.Error())
 		}
 	}
+	if strings.HasPrefix(m.Content, "e!status") {
+		args := strings.Split(m.Content, " ")
+		args = append(args[:0], args[1:]...)
+		err := s.UpdateGameStatus(0, strings.Join(args, " "))
+		if err != nil {
+			err := SendWithSelfDelete(s, m.ChannelID, "Failed to update status: "+err.Error())
+			if err != nil {
+				return
+			}
+		}
+		err = ioutil.WriteFile("status.text", []byte(strings.Join(args, " ")), fs.FileMode(0777))
+		if err != nil {
+			err := SendWithSelfDelete(s, m.ChannelID, "Failed to write to file: "+err.Error())
+			if err != nil {
+				return
+			}
+		}
+		s.ChannelMessageSendReply(m.ChannelID, "Changed status to "+strings.Join(args, " "), m.Reference())
+	}
 	if strings.HasPrefix(m.Content, "e!clean") {
+		p, err := s.UserChannelPermissions(m.Author.ID, m.ChannelID)
+		if err != nil {
+			fmt.Println(err.Error())
+		}
+
+		if !(p&discordgo.PermissionManageMessages == discordgo.PermissionManageMessages) {
+			err := SendWithSelfDelete(s, m.ChannelID, "You don't have permission to run that command!")
+			if err != nil {
+				return
+			}
+		}
 		args := strings.Split(m.Content, " ")
 		var count int
 		if len(args) >= 2 {
@@ -98,7 +137,8 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		}
 		requestsNeeded := count / 100
 		for i := 1; i < requestsNeeded; i++ {
-			messages, err := s.ChannelMessages(m.ChannelID, count/requestsNeeded, m.ID, "", "")
+			println(count / requestsNeeded)
+			messages, err := s.ChannelMessages(m.ChannelID, count, m.ID, "", "")
 			var messageIDs = make([]string, 0)
 			messageIDs = append(messageIDs, m.ID)
 			for _, message := range messages {
@@ -113,6 +153,21 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			if err != nil {
 				println(err.Error())
 			}
+		}
+		messages, err := s.ChannelMessages(m.ChannelID, count%100, m.ID, "", "")
+		var messageIDs = make([]string, 0)
+		messageIDs = append(messageIDs, m.ID)
+		for _, message := range messages {
+			messageIDs = append(messageIDs, message.ID)
+		}
+		if err != nil {
+			println(err.Error())
+		}
+		err = s.ChannelMessagesBulkDelete(
+			m.ChannelID,
+			messageIDs)
+		if err != nil {
+			println(err.Error())
 		}
 		err = s.ChannelMessageDelete(workingMessage.ChannelID, workingMessage.ID)
 		if err != nil {
