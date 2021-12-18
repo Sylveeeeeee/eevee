@@ -1,0 +1,2 @@
+# Eevee
+Eevee discord bot.
