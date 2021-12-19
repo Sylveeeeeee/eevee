@@ -84,7 +84,7 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			println(err.Error())
 		}
 	}
-	if strings.HasPrefix(m.Content, "e!status") {
+	if strings.HasPrefix(m.Content, "e!status") && m.Author.ID == "861733561463603240" {
 		args := strings.Split(m.Content, " ")
 		args = append(args[:0], args[1:]...)
 		err := s.UpdateGameStatus(0, strings.Join(args, " "))
@@ -101,7 +101,10 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 				return
 			}
 		}
-		s.ChannelMessageSendReply(m.ChannelID, "Changed status to "+strings.Join(args, " "), m.Reference())
+		_, err = s.ChannelMessageSendReply(m.ChannelID, "Changed status to "+strings.Join(args, " "), m.Reference())
+		if err != nil {
+			return
+		}
 	}
 	if strings.HasPrefix(m.Content, "e!clean") {
 		p, err := s.UserChannelPermissions(m.Author.ID, m.ChannelID)
